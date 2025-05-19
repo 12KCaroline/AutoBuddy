@@ -1,0 +1,12 @@
+streamlit
+pandas
+requests
+geopy
+openai
+langchain
+langchain-google-genai
+speechrecognition
+feedparser
+beautifulsoup4
+urllib3
+python-dotenv
