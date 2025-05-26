@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Load environment variables
 load_dotenv()
-GOOGLE_API_KEY =("AIzaSyCRluMC9hKzLhCvgHDm2MM0aVsyTZyRN6Y")
+GOOGLE_API_KEY =("api")
 if not GOOGLE_API_KEY:
     st.error("Google API key not found. Please set it in the .env file.")
     st.stop()
