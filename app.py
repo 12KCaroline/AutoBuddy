@@ -1,6 +1,5 @@
 import streamlit as st
 from utils import initialize_csv, save_car_data, read_car_data, get_dealer_locations, get_maintenance_tips, predict_part_failure, predict_next_pms
-from datetime import datetime
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage
 import os
@@ -12,13 +11,16 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 import logging
+from datetime import datetime, timedelta
+
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
 # Load environment variables
 load_dotenv()
-GOOGLE_API_KEY =("Your APi")
+GOOGLE_API_KEY =("AIzaSyCRluMC9hKzLhCvgHDm2MM0aVsyTZyRN6Y")
 if not GOOGLE_API_KEY:
     st.error("Google API key not found. Please set it in the .env file.")
     st.stop()
@@ -64,6 +66,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+if 'next_pms_date' not in st.session_state:
+    st.session_state.next_pms_date = None
+if 'next_pms_vehicle' not in st.session_state:
+    st.session_state.next_pms_vehicle = ""
 
 # Apply clean light theme CSS
 st.markdown("""
@@ -160,7 +167,7 @@ with col1:
 st.markdown("---")
 
 # Navigation using tabs
-tabs = st.tabs(["💬 Chat", "🔧 Update My PMS", "📊 View PMS History", "🛠️ Parts Finder", "📰 Car Industry News"])
+tabs = st.tabs(["💬 Chat", "🔧 Update My PMS", "📊 View PMS History", "🛠️ Parts Finder", "📰 Car Industry News", "🚘 Car Recommendation"])
 
 # ====== CHAT TAB ======
 with tabs[0]:
@@ -280,7 +287,105 @@ with tabs[1]:
         else:
             st.error("Please fill in all required fields")
 
+
+estimated_cost_by_segment = {
+    "Subcompact": {  # e.g., Toyota Vios, Honda Brio, Suzuki Dzire
+        "10,000": (2500, 3500),
+        "20,000": (3000, 4000),
+        "30,000": (3500, 5000),
+        "40,000": (4000, 5500),
+        "50,000": (4500, 6000),
+        "60,000": (5000, 6500),
+        "70,000": (5500, 7000),
+        "80,000": (6000, 7500),
+        "90,000": (6500, 8000),
+    },
+    "Compact": {  # e.g., Honda Civic, Toyota Altis
+        "10,000": (3000, 4000),
+        "20,000": (4000, 5500),
+        "30,000": (5000, 7000),
+        "40,000": (5500, 7500),
+        "50,000": (6000, 8000),
+        "60,000": (6500, 8500),
+        "70,000": (7000, 9000),
+        "80,000": (7500, 9500),
+        "90,000": (8000, 10000),
+    },
+    "MPV": {  # e.g., Toyota Innova, Mitsubishi Xpander
+        "10,000": (3500, 5000),
+        "20,000": (4500, 6000),
+        "30,000": (5500, 8000),
+        "40,000": (6000, 8500),
+        "50,000": (6500, 9000),
+        "60,000": (7000, 9500),
+        "70,000": (7500, 10000),
+        "80,000": (8000, 11000),
+        "90,000": (8500, 12000),
+    },
+    "SUV": {  # e.g., Fortuner, Montero, Everest
+        "10,000": (4000, 6000),
+        "20,000": (6000, 8000),
+        "30,000": (7000, 10000),
+        "40,000": (7500, 10500),
+        "50,000": (8000, 11000),
+        "60,000": (8500, 11500),
+        "70,000": (9000, 12000),
+        "80,000": (9500, 13000),
+        "90,000": (10000, 14000),
+    },
+    "Pickup": {  # e.g., Toyota Hilux, Ford Raptor
+        "10,000": (4500, 6500),
+        "20,000": (6000, 8500),
+        "30,000": (7500, 10500),
+        "40,000": (8000, 11000),
+        "50,000": (8500, 11500),
+        "60,000": (9000, 12000),
+        "70,000": (9500, 13000),
+        "80,000": (10000, 14000),
+        "90,000": (10500, 15000),
+    },
+    "Luxury MPV/SUV": {  # e.g., Alphard, Land Cruiser
+        "10,000": (6000, 9000),
+        "20,000": (9000, 12000),
+        "30,000": (10000, 14000),
+        "40,000": (11000, 15000),
+        "50,000": (12000, 16000),
+        "60,000": (13000, 17000),
+        "70,000": (14000, 18000),
+        "80,000": (15000, 19000),
+        "90,000": (16000, 20000),
+    },
+}
+
+car_model_to_segment = {
+    "Toyota Vios": "Subcompact",
+    "Honda Brio": "Subcompact",
+    "Suzuki Dzire": "Subcompact",
+    "Toyota Altis": "Compact",
+    "Honda Civic": "Compact",
+    "Toyota Innova": "MPV",
+    "Mitsubishi Xpander": "MPV",
+    "Toyota Fortuner": "SUV",
+    "Mitsubishi Montero Sport": "SUV",
+    "Ford Everest": "SUV",
+    "Toyota Alphard": "Luxury MPV/SUV",
+    "Toyota Land Cruiser": "Luxury MPV/SUV",
+    "Toyota Hilux": "Pickup",
+    "Ford Raptor": "Pickup",
+}
+
+
+# --- Tab 2: View PMS History & Next Maintenance Prediction ---
+
 with tabs[2]:
+    if st.session_state.get("next_pms_date"):
+        today = datetime.today().date()
+        reminder_day = st.session_state.next_pms_date.date() - timedelta(days=1)
+        if today == reminder_day:
+            st.warning(
+                f"📢 Reminder: PMS for your {st.session_state.next_pms_vehicle} is scheduled for tomorrow ({st.session_state.next_pms_date.strftime('%B %d, %Y')})."
+            )
+
     df = read_car_data()
     if df.empty:
         st.warning("🔍 No PMS records found. Please add your first PMS record in the Update tab!")
@@ -289,27 +394,59 @@ with tabs[2]:
         st.dataframe(df, use_container_width=True)
         st.markdown("---")
         st.subheader("Possible Your Next Maintenance")
+
         col1, col2 = st.columns(2)
+
         with col1:
-            car_options = [f"{row['Brand']} {row['Name']}" for _, row in df.iterrows()]
-            selected_car = st.selectbox("Select a vehicle", car_options)
-            selected_idx = 0
-            for i, option in enumerate(car_options):
-                if option == selected_car:
-                    selected_idx = i
-                    break
+                car_options = [
+                    f"{i}. {row['Brand']} {row['Name']}"
+                    for i, (_, row) in enumerate(df.iterrows())
+                    if pd.notna(row['Last_PMS_KM'])
+                ]
+
+                selected_car = st.selectbox("Select a vehicle", car_options)
+
+                # Extract the correct index from the numbered string (e.g., "1. Toyota Vios" → 0)
+                selected_idx = int(selected_car.split(".")[0]) 
+
+
         with col2:
             predict_button = st.button("🔮 Calculate My Next PMS")
+
         if predict_button and not df.empty:
+
             row = df.iloc[selected_idx]
+            full_name = f"{row['Brand']} {row['Name']}"
+
+            # Predict next PMS km and date (assuming your predict_next_pms function exists)
             next_km, next_date = predict_next_pms(row['Last_PMS_KM'], row['Last_PMS_Date'])
+
+            # Determine car segment
+            car_segment = car_model_to_segment.get(full_name, "Compact")
+
+            # Format milestone string WITH commas to match dictionary keys
+            milestone_value = round(next_km / 10000) * 10000
+            milestone = f"{milestone_value:,}"  # e.g., "10,000"
+
+            # Get estimated cost range from dictionary, fallback to (3500, 5000)
+            cost_range = estimated_cost_by_segment.get(car_segment, {}).get(milestone, (3500, 5000))
+            estimated_cost = f"₱{cost_range[0]:,} - ₱{cost_range[1]:,}"
+
+            # Save to session state for reminder use
+            st.session_state.next_pms_date = next_date
+            st.session_state.next_pms_vehicle = full_name
+
+            # Display next PMS details and dealer info
             col1, col2 = st.columns(2)
+
             with col1:
                 card("Next PMS Details", f"""
-                For your {row['Brand']} {row['Name']}
-                🔄 Next PMS due at: {next_km:,} km
-                📅 Or by date: {next_date.strftime('%B %d, %Y')}
+                🚘 Vehicle: {full_name}
+                🔄 Next PMS at: {next_km:,} km
+                📅 Date: {next_date.strftime('%B %d, %Y')}
+                💸 Estimated Cost: {estimated_cost}
                 """)
+
             with col2:
                 dealer = get_dealer_locations(row['Brand'])
                 dealer_html = ""
@@ -318,16 +455,48 @@ with tabs[2]:
                         dealer_html += f"{idx}. {d}  "
                 else:
                     dealer_html = f"1. {dealer}"
+
                 card("Authorized Service Centers", f"""
                 🏢 Nearest {row['Brand']} Dealers in Pampanga:<br>
                 {dealer_html}
                 """)
+
+            # Prepare downloadable note in the requested format
+            dealers_list = []
+            if isinstance(dealer, list):
+                dealers_list = dealer
+            else:
+                dealers_list = [dealer]
+
+            # Format dealer list with numbering and new lines
+            dealer_note_lines = [f"{idx}. {d}" for idx, d in enumerate(dealers_list, start=1)]
+            dealer_note_str = "\n".join(dealer_note_lines)
+
+            note = f"""Next PMS Reminder:
+Vehicle: {full_name}
+Next PMS Date: {next_date.strftime('%B %d, %Y')}
+Target KM: {next_km:,} km
+Estimated Cost: {estimated_cost}
+Nearest Dealer(s):
+{dealer_note_str}"""
+
+            st.download_button(
+                label="📝 Download PMS Note",
+                data=note,
+                file_name=f"{next_date.strftime('%Y-%m-%d')}_PMS_Note.txt",
+                mime="text/plain"
+            )
+
             st.markdown("---")
             st.subheader("Replacement Part Alerts")
+
             parts_predictions = predict_part_failure(row['Brand'], row['Name'], row['Last_PMS_KM'])
+
             col1, col2 = st.columns(2)
+
             with col1:
                 card("Parts Likely to Need Replacement", "<br>".join(parts_predictions))
+
             with col2:
                 tips = get_maintenance_tips(row['Brand'])
                 tips_html = "<ol>"
@@ -435,6 +604,61 @@ with tabs[4]:
                 st.markdown("---")
         except Exception as e:
             st.error(f"Error displaying article: {e}")
+
+with tabs[5]:
+    st.subheader("🚘 Smart Car Recommendation")
+    st.markdown("Tell us your preferences and AutoBuddy will find your perfect match!")
+
+    with st.form("car_recommendation_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            budget = st.selectbox("💰 Budget Range", ["Any","< ₱800k", "₱800k – ₱1.2M", "₱1.2M – ₱1.8M", "₱1.8M - 2.7M", "3M+"])
+            fuel_type = st.selectbox("⛽ Preferred Fuel Type", ["Any", "Gasoline", "Diesel", "Hybrid", "Electric"])
+            transmission = st.selectbox("🔁 Transmission", ["Any", "Automatic", "Manual"])
+            seating = st.selectbox("🪑 Seating Capacity", ["Any", "2 Seaters", "4 Seaters", "5 Seaters", " 6 Seaters", "7+ Seaters or More"])
+        with col2:
+            brand_preference = st.selectbox("🚗 Brand Preference", 
+                                            ["Any", "Toyota", "Honda", "Ford", "Hyundai", "Mitsubishi", "Kia", "Nissan", "Isuzu", "Mazda", "Subaru", "Volkswagen", "BMW", "Mercedez-Benz", "Audi", "Geely"])
+            car_type = st.selectbox("🚙 Car Type", ["Any", "Sedan", "Hatchback", "Pickup", "Van", "SUV"])
+            usage = st.selectbox("🛣️ Sealect Performace Preference", ["Economy", "Sporty", "Off-Roading", "Balanced"])
+            engine = st.selectbox("Select Engine Size", ["Any", "1.0L - 1.5L", "1.5L - 2.0L", "2.0L - 2.5", "2.5L - 3.0L", "Above 3.0L"])
+
+        submit_reco = st.form_submit_button("🔍 Recommend a Car")
+
+    if submit_reco:
+
+
+        prompt = f"""
+        Act as an automotive expert in the Philippine market. Based on the following user preferences, recommend 1 to 7 real car models (2023–2025) available in the Philippines:
+
+        - Budget: {budget}
+        - Fuel Type: {fuel_type}
+        - Transmission: {transmission}
+        - Seating Capacity: {seating}
+        - Preferred Brand: {brand_preference}
+        - Car Type: {car_type}
+        - Intended Use: {usage}
+        - Engine Size: {engine}
+    
+
+        For each car, provide:
+        - Full Model Name
+        - Estimated Price (in PHP)
+        - Key Features (fuel economy, safety, tech)
+        - Why it's a good match for the user's input
+
+        Only include cars that are real and sold in the Philippines as of 2024–2025.
+        Format the output in markdown with headers and bullet points.
+        """
+
+        with st.spinner("🤖 AutoBuddy is thinking..."):
+            recommendation = get_chat_response(chat, prompt)
+
+        if recommendation:
+            card("🔎 Your Car Match", recommendation)
+        else:
+            st.error("❌ AutoBuddy couldn't find a match. Try changing your preferences.")
+
 
 # Footer
 st.markdown("---")

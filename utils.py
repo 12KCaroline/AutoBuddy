@@ -129,7 +129,7 @@ def get_dealer_locations(brand):
     """Get nearby dealer locations based on the car brand."""
     dealers = {
         "Toyota": [
-            "Toyota San Fernando - McArthur Hwy, San Fernando, Pampanga",
+            "Toyota San Fernando - McArthur Hwy, San Fernando, Pampanga" ,
             "Toyota Angeles - Angeles-Magalang Rd, Angeles, Pampanga"
         ],
         "Honda": [
