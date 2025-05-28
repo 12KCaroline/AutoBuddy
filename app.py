@@ -12,7 +12,7 @@ import urllib3
 from dotenv import load_dotenv
 import logging
 from datetime import datetime, timedelta
-
+import google.generativeai as genai
 
 
 # Set up logging
@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Load environment variables
 load_dotenv()
-GOOGLE_API_KEY =("api")
+GOOGLE_API_KEY =("AIzaSyCRluMC9hKzLhCvgHDm2MM0aVsyTZyRN6Y")
 if not GOOGLE_API_KEY:
     st.error("Google API key not found. Please set it in the .env file.")
     st.stop()
@@ -29,7 +29,7 @@ os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 # Initialize
 initialize_csv()
 try:
-    chat = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+    chat = ChatGoogleGenerativeAI(model="gemini-2.5-flash-preview-04-17", temperature=0.3)
 except Exception as e:
     st.error(f"Failed to initialize Gemini API: {e}")
     st.stop()
@@ -609,18 +609,19 @@ with tabs[5]:
     st.subheader("🚘 Smart Car Recommendation")
     st.markdown("Tell us your preferences and AutoBuddy will find your perfect match!")
 
+    # --- FORM-BASED CAR RECOMMENDATION ---
     with st.form("car_recommendation_form"):
         col1, col2 = st.columns(2)
         with col1:
-            budget = st.selectbox("💰 Budget Range", ["Any","< ₱800k", "₱800k – ₱1.2M", "₱1.2M – ₱1.8M", "₱1.8M - 2.7M", "3M+"])
+            budget = st.selectbox("💰 Budget Range", ["Any", "< ₱800k", "₱800k – ₱1.2M", "₱1.2M – ₱1.8M", "₱1.8M - 2.7M", "3M+"])
             fuel_type = st.selectbox("⛽ Preferred Fuel Type", ["Any", "Gasoline", "Diesel", "Hybrid", "Electric"])
             transmission = st.selectbox("🔁 Transmission", ["Any", "Automatic", "Manual"])
-            seating = st.selectbox("🪑 Seating Capacity", ["Any", "2 Seaters", "4 Seaters", "5 Seaters", " 6 Seaters", "7+ Seaters or More"])
+            seating = st.selectbox("🪑 Seating Capacity", ["Any", "2 Seaters", "4 - 5 Seaters", " 6 - 7 Seaters", "8+ Seaters or More"])
         with col2:
             brand_preference = st.selectbox("🚗 Brand Preference", 
                                             ["Any", "Toyota", "Honda", "Ford", "Hyundai", "Mitsubishi", "Kia", "Nissan", "Isuzu", "Mazda", "Subaru", "Volkswagen", "BMW", "Mercedez-Benz", "Audi", "Geely"])
             car_type = st.selectbox("🚙 Car Type", ["Any", "Sedan", "Hatchback", "Pickup", "Van", "SUV"])
-            usage = st.selectbox("🛣️ Sealect Performace Preference", ["Economy", "Sporty", "Off-Roading", "Balanced"])
+            usage = st.selectbox("🛣️ Select Performance Preference", ["Economy", "Sporty", "Off-Roading", "Balanced"])
             engine = st.selectbox("Select Engine Size", ["Any", "1.0L - 1.5L", "1.5L - 2.0L", "2.0L - 2.5", "2.5L - 3.0L", "Above 3.0L"])
 
         submit_reco = st.form_submit_button("🔍 Recommend a Car")
@@ -629,7 +630,7 @@ with tabs[5]:
 
 
         prompt = f"""
-        Act as an automotive expert in the Philippine market. Based on the following user preferences, recommend 1 to 7 real car models (2023–2025) available in the Philippines:
+        Act as an automotive expert in the Philippine market. Based on the following user preferences, recommend as many real car models (2023–2025) available in the Philippines that match or closely match the criteria:
 
         - Budget: {budget}
         - Fuel Type: {fuel_type}
@@ -639,16 +640,16 @@ with tabs[5]:
         - Car Type: {car_type}
         - Intended Use: {usage}
         - Engine Size: {engine}
-    
 
         For each car, provide:
         - Full Model Name
         - Estimated Price (in PHP)
         - Key Features (fuel economy, safety, tech)
+        - Description of the car
         - Why it's a good match for the user's input
+        - Pros and cons of the car
 
-        Only include cars that are real and sold in the Philippines as of 2024–2025.
-        Format the output in markdown with headers and bullet points.
+        Make sure the car models are sold in the Philippines as of 2024–2025. Do not recommend concept cars or unavailable models. Format the output in markdown with bold headers and bullet points for clarity.
         """
 
         with st.spinner("🤖 AutoBuddy is thinking..."):
@@ -658,6 +659,66 @@ with tabs[5]:
             card("🔎 Your Car Match", recommendation)
         else:
             st.error("❌ AutoBuddy couldn't find a match. Try changing your preferences.")
+
+        # --- CONVERSATIONAL CHATBOT ---
+    st.markdown("---")
+    st.subheader("💬 Chat with AutoBuddy")
+    st.markdown("Ask me anything about car specs, recommendations, or comparisons!")
+
+    # Initialize chat history
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = [
+            {"role": "system", "content": "You are AutoBuddy, an automotive expert specializing in the Philippine car market (2023–2025). Provide helpful, concise, and friendly answers to user questions about cars. Politely decline any questions about mechanical problems, repairs, or diagnostics."}
+        ]
+
+    # Delete button
+    if st.button("🗑️ Clear Chat"):
+        st.session_state.chat_history = [
+            {"role": "system", "content": "You are AutoBuddy, an automotive expert specializing in the Philippine car market (2023–2025). Provide helpful, concise, and friendly answers to user questions about cars. Politely decline any questions about mechanical problems, repairs, or diagnostics."}
+        ]
+        st.success("Chat history cleared!")
+
+    # Display existing messages
+    for message in st.session_state.chat_history[1:]:  # Skip system message
+        if message["role"] == "user":
+            st.markdown(f"**🧑 You:** {message['content']}")
+        else:
+            st.markdown(f"**🤖 AutoBuddy:** {message['content']}")
+
+    # Chat input at the bottom
+    user_query = st.chat_input("Ask AutoBuddy about cars...")
+
+    # Basic problem-related keyword filtering
+    problem_keywords = [
+        "won't start", "not starting", "engine noise", "check engine", "broken",
+        "problem", "issue", "overheat", "vibration", "malfunction", "diagnose",
+        "repair", "fix", "stalling", "squeaking", "smoke", "trouble", "oil leak"
+    ]
+
+    def is_problem_related(query):
+        return any(word in query.lower() for word in problem_keywords)
+
+    if user_query:
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
+
+        if is_problem_related(user_query):
+            auto_reply = (
+                "I'm here to help with car comparisons, specs, and recommendations! 🚗\n\n"
+                "But for car problems or repairs, it's best to consult a certified mechanic or service center. 🔧"
+            )
+            st.session_state.chat_history.append({"role": "assistant", "content": auto_reply})
+            st.rerun()
+
+        else:
+            with st.spinner("AutoBuddy is typing..."):
+                try:
+                    response = chat.invoke(st.session_state.chat_history)
+                    reply = response.content if hasattr(response, "content") else response
+                    st.session_state.chat_history.append({"role": "assistant", "content": reply})
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ AutoBuddy encountered an error: {e}")
+
 
 
 # Footer
